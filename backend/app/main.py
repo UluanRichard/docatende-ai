@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.documents import router as documents_router
+
 app = FastAPI(
     title="DocAtende AI API",
     description="API da plataforma SaaS DocAtende AI para atendimento inteligente com IA e documentos corporativos.",
@@ -14,6 +16,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(documents_router)
 
 
 @app.get("/")
