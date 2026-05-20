@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 import json
 import shutil
+from app.workers.celery_app import process_document_task
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
@@ -71,17 +72,19 @@ def upload_document(file: UploadFile = File(...)):
     documents = load_documents()
 
     document = {
-        "id": document_id,
-        "name": file.filename,
-        "stored_filename": stored_filename,
-        "status": "Recebido",
-        "pages": 0,
-        "chunks": 0,
-        "created_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+      "id": document_id,
+      "name": file.filename,
+      "stored_filename": stored_filename,
+      "status": "Fila",
+      "pages": 0,
+      "chunks": 0,
+      "created_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
     }
 
     documents.insert(0, document)
     save_documents(documents)
+
+    process_document_task.delay(document_id)
 
     return {
         "message": "Documento enviado com sucesso.",

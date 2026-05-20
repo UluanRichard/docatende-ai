@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { Sidebar } from "../components/Sidebar";
 import { Header } from "../components/Header";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 type ChatMessage = {
   role: "assistant" | "user";
@@ -50,29 +52,7 @@ const metrics = [
   },
 ];
 
-const documents = [
-  {
-    name: "politica-reembolso-demo.pdf",
-    status: "Processado",
-    pages: 12,
-    chunks: 48,
-    date: "20/05/2026",
-  },
-  {
-    name: "manual-atendimento-sac.pdf",
-    status: "Processado",
-    pages: 27,
-    chunks: 119,
-    date: "20/05/2026",
-  },
-  {
-    name: "faq-comercial.pdf",
-    status: "Fila",
-    pages: 8,
-    chunks: 0,
-    date: "20/05/2026",
-  },
-];
+
 
 const conversations = [
   {
@@ -119,11 +99,24 @@ const pageInfo: Record<string, { title: string; subtitle: string }> = {
   },
 };
 
+type DocumentItem = {
+  id: string;
+  name: string;
+  stored_filename: string;
+  status: string;
+  pages: number;
+  chunks: number;
+  created_at: string;
+};
+
 export default function Home() {
   const [activePage, setActivePage] = useState("dashboard");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [question, setQuestion] = useState("");
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -143,25 +136,70 @@ export default function Home() {
 
   const currentPage = useMemo(() => pageInfo[activePage], [activePage]);
 
-  function handleRefresh() {
-    setIsRefreshing(true);
+  async function handleRefresh() {
+  setIsRefreshing(true);
 
-    setTimeout(() => {
-      setIsRefreshing(false);
-      alert("Dados atualizados com sucesso.");
-    }, 900);
+  await loadDocuments();
+
+  setTimeout(() => {
+    setIsRefreshing(false);
+    alert("Dados atualizados com sucesso.");
+  }, 500);
+}
+
+  async function handleUpload() {
+  if (!selectedFile) {
+    alert("Selecione um arquivo PDF antes de enviar.");
+    return;
   }
 
-  function handleUpload() {
-    if (!selectedFile) {
-      alert("Selecione um arquivo PDF antes de enviar.");
-      return;
+  try {
+    setIsUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    const response = await fetch(`${API_URL}/documents/upload`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Erro ao enviar documento.");
     }
 
-    alert(`Documento "${selectedFile.name}" enviado para processamento simulado.`);
     setSelectedFile(null);
-  }
+    await loadDocuments();
 
+    alert("Documento enviado com sucesso.");
+  } catch (error) {
+    console.error(error);
+    alert("Não foi possível enviar o documento.");
+  } finally {
+    setIsUploading(false);
+  }
+}
+
+async function loadDocuments() {
+  try {
+    const response = await fetch(`${API_URL}/documents`);
+
+    if (!response.ok) {
+      throw new Error("Erro ao buscar documentos.");
+    }
+
+    const data = await response.json();
+    setDocuments(data.documents || []);
+  } catch (error) {
+    console.error(error);
+    alert("Não foi possível carregar os documentos.");
+  }
+}
+
+useEffect(() => {
+  loadDocuments();
+}, []);
   function handleAskQuestion() {
     if (!question.trim()) {
       alert("Digite uma pergunta antes de enviar.");
@@ -199,13 +237,15 @@ export default function Home() {
         />
 
         <div className="space-y-6 p-6">
-          {activePage === "dashboard" && <DashboardSection />}
+          {activePage === "dashboard" && <DashboardSection documents={documents} />}
           {activePage === "documents" && (
             <DocumentsSection
+              documents={documents}
               selectedFile={selectedFile}
+              isUploading={isUploading}
               onSelectFile={setSelectedFile}
               onUpload={handleUpload}
-            />
+        />
           )}
           {activePage === "chat" && (
             <ChatSection
@@ -224,7 +264,7 @@ export default function Home() {
   );
 }
 
-function DashboardSection() {
+function DashboardSection({ documents }: { documents: DocumentItem[] }) {
   return (
     <>
       <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-950 text-white shadow-sm">
@@ -289,7 +329,7 @@ function DashboardSection() {
       <MetricsGrid />
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <DocumentsPreview />
+        <DocumentsPreview documents={documents} />
         <ChatPreview />
       </div>
 
@@ -332,11 +372,15 @@ function MetricsGrid() {
 }
 
 function DocumentsSection({
+  documents,
   selectedFile,
+  isUploading,
   onSelectFile,
   onUpload,
 }: {
+  documents: DocumentItem[];
   selectedFile: File | null;
+  isUploading: boolean;
   onSelectFile: (file: File | null) => void;
   onUpload: () => void;
 }) {
@@ -358,7 +402,7 @@ function DocumentsSection({
           className="flex items-center justify-center gap-2 rounded-2xl bg-teal-600 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-teal-700"
         >
           <UploadCloud size={17} />
-          Enviar documento
+          {isUploading ? "Enviando..." : "Enviar documento"}
         </button>
       </div>
 
@@ -386,12 +430,12 @@ function DocumentsSection({
         </div>
       )}
 
-      <DocumentsTable />
+      <DocumentsTable documents={documents} />
     </section>
   );
 }
 
-function DocumentsPreview() {
+function DocumentsPreview({ documents }: { documents: DocumentItem[] }) {
   return (
     <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-5 flex items-center gap-2">
@@ -399,12 +443,12 @@ function DocumentsPreview() {
         <h3 className="text-lg font-black">Base de conhecimento</h3>
       </div>
 
-      <DocumentsTable />
+      <DocumentsTable documents={documents} />
     </div>
   );
 }
 
-function DocumentsTable() {
+function DocumentsTable({ documents }: { documents: DocumentItem[] }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200">
       <table className="w-full text-left text-sm">
@@ -418,27 +462,42 @@ function DocumentsTable() {
           </tr>
         </thead>
 
-        <tbody>
-          {documents.map((doc) => (
-            <tr key={doc.name} className="border-t border-slate-200">
-              <td className="p-4 font-medium text-slate-700">{doc.name}</td>
-              <td className="p-4">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-bold ${
-                    doc.status === "Processado"
-                      ? "bg-teal-50 text-teal-700"
-                      : "bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  {doc.status}
-                </span>
-              </td>
-              <td className="p-4 text-slate-500">{doc.pages}</td>
-              <td className="p-4 text-slate-500">{doc.chunks}</td>
-              <td className="p-4 text-slate-500">{doc.date}</td>
-            </tr>
-          ))}
-        </tbody>
+<tbody>
+  {documents.length === 0 && (
+    <tr>
+      <td
+        colSpan={5}
+        className="p-6 text-center text-sm text-slate-500"
+      >
+        Nenhum documento enviado ainda.
+      </td>
+    </tr>
+  )}
+
+  {documents.map((doc) => (
+    <tr key={doc.id} className="border-t border-slate-200">
+      <td className="p-4 font-medium text-slate-700">{doc.name}</td>
+
+      <td className="p-4">
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-bold ${
+            doc.status === "Processado"
+              ? "bg-teal-50 text-teal-700"
+              : doc.status === "Recebido"
+              ? "bg-blue-50 text-blue-700"
+              : "bg-amber-50 text-amber-700"
+          }`}
+        >
+          {doc.status}
+        </span>
+      </td>
+
+      <td className="p-4 text-slate-500">{doc.pages}</td>
+      <td className="p-4 text-slate-500">{doc.chunks}</td>
+      <td className="p-4 text-slate-500">{doc.created_at}</td>
+    </tr>
+  ))}
+       </tbody>
       </table>
     </div>
   );

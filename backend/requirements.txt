@@ -9,3 +9,4 @@ celery==5.4.0
 openai==1.58.1
 python-multipart==0.0.20
 python-multipart
+pypdf
