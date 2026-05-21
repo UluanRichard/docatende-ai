@@ -202,29 +202,61 @@ async function loadDocuments() {
 useEffect(() => {
   loadDocuments();
 }, []);
-  function handleAskQuestion() {
-    if (!question.trim()) {
-      alert("Digite uma pergunta antes de enviar.");
-      return;
+async function handleAskQuestion() {
+  if (!question.trim()) {
+    alert("Digite uma pergunta antes de enviar.");
+    return;
+  }
+
+  const userQuestion = question;
+
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "user",
+      text: userQuestion,
+    },
+  ]);
+
+  setQuestion("");
+
+  try {
+    const response = await fetch(`${API_URL}/chat/ask`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question: userQuestion,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Erro ao consultar o Chat RAG.");
     }
 
-    const userQuestion = question;
+    const data = await response.json();
 
     setMessages((prev) => [
       ...prev,
       {
-        role: "user",
-        text: userQuestion,
-      },
-      {
         role: "assistant",
-        text: "Resposta simulada: com base nos documentos enviados, a informação foi localizada na base de conhecimento. Na próxima etapa, essa resposta será gerada pelo backend usando RAG real.",
-        source: "base-conhecimento-demo.pdf",
+        text: data.answer,
+        source: data.source || undefined,
       },
     ]);
+  } catch (error) {
+    console.error(error);
 
-    setQuestion("");
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        text: "Não foi possível consultar a base de conhecimento neste momento.",
+      },
+    ]);
   }
+}
 
   return (
     <main className="min-h-screen bg-[#F5F7FB] text-slate-950">
