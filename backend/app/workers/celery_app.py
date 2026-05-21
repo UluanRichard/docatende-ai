@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-
+from app.services.vector_store import save_document_chunks
 from celery import Celery
 from pypdf import PdfReader
 
@@ -115,6 +115,12 @@ def process_document_task(document_id: str):
 
         full_text = "\n\n".join(extracted_pages).strip()
         chunks = split_text_into_chunks(full_text)
+        
+        save_document_chunks(
+         document_id=document_id,
+         document_name=document["name"],
+         chunks=chunks,
+        )
 
         extracted_file = EXTRACTED_DIR / f"{document_id}.txt"
         extracted_file.write_text(full_text, encoding="utf-8")

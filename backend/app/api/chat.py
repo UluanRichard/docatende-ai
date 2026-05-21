@@ -5,6 +5,9 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.services.vector_store import search_similar_chunks
+from app.services.ai_service import generate_answer
+
 router = APIRouter(prefix="/chat", tags=["Chat RAG"])
 
 BASE_DIR = Path("/app/storage")
@@ -117,6 +120,25 @@ def ask_question(payload: ChatRequest):
             "source": None,
             "confidence": 0,
         }
+
+    try:
+        similar_chunks = search_similar_chunks(question)
+
+        if similar_chunks:
+            answer = generate_answer(question, similar_chunks)
+
+            sources = list(
+                dict.fromkeys([chunk["document_name"] for chunk in similar_chunks])
+            )
+
+            return {
+                "answer": answer,
+                "source": ", ".join(sources),
+                "confidence": round(float(similar_chunks[0]["similarity"]), 4),
+            }
+
+    except Exception as error:
+        print(f"Erro no RAG vetorial: {error}")
 
     result = find_best_chunk(question)
 
